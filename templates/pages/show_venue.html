@@ -74,6 +74,29 @@
 		{% endfor %}
 	</div>
 </section>
+<section>
+	<div>
+		<button id="delete-btn" data-id="{{ venue.id }}" class="btn btn-danger">Remove Venue</button>
+	</div>
+</section>
+<script>
+	const deleteBtn = document.querySelector('#delete-btn');
+	deleteBtn.addEventListener('click', (ev) => {
+		const venue_id = ev.target.dataset['id'];
+		if (!confirm('Do you want really to delete this venue and all of its related shows?')) {
+			return;
+		}
+		fetch(`/venues/${venue_id}`, {
+			method: 'DELETE'
+		})
+		.then(response => response.json())
+		.then((data) => {
+			if (data.success) {
+				window.location.href = data.redirect;
+			}
+		});
+	});
+</script>
 
 {% endblock %}
 

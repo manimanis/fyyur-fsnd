@@ -3,15 +3,18 @@
 # ----------------------------------------------------------------------------#
 
 import json
+import sys
+
 import dateutil.parser
 import babel
-from flask import Flask, render_template, request, Response, flash, redirect, url_for
+from flask import Flask, render_template, request, Response, flash, redirect, url_for, jsonify
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
 import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
 from sqlalchemy.orm import backref
+from werkzeug.datastructures import MultiDict
 
 from forms import *
 
@@ -73,9 +76,6 @@ class Artist(db.Model):
     seeking_description = db.Column(db.String, nullable=True)
 
     # venues = db.relationship('Venue', secondary='Show')
-
-
-# TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
 
 
 class Show(db.Model):
@@ -184,12 +184,44 @@ def create_venue_form():
 
 @app.route('/venues/create', methods=['POST'])
 def create_venue_submission():
-    # TODO: insert form data as a new Venue record in the db, instead
-    # TODO: modify data to be the data object returned from db insertion
+    # Grab data from form
+    venue = {
+        "name": request.form.get('name', ''),
+        "genres": request.form.getlist('genres'),
+        "address": request.form.get('address', ''),
+        "city": request.form.get('city', ''),
+        "state": request.form.get('state', ''),
+        "phone": request.form.get('phone', ''),
+        "website": None,
+        "facebook_link": request.form.get('facebook_link', ''),
+    }
+    # Make an instance from the data
+    newVenue = Venue(**venue)
+    error = False
+    exists = len(Venue.query
+                 .filter(db.func.lower(Venue.name) == db.func.lower(newVenue.name))
+                 .all()) > 0
 
-    # on successful db insert, flash success
-    flash('Venue ' + request.form['name'] + ' was successfully listed!')
-    # TODO: on unsuccessful db insert, flash an error instead.
+    # Inserts the venue only if it doesn't exist
+    if exists:
+        error = True
+        flash('An error occurred. Venue ' + newVenue.name + ' exists already.', 'error')
+    else:
+        try:
+            db.session.add(newVenue)
+            db.session.commit()
+            # on successful db insert, flash success
+            flash('Venue ' + newVenue.name + ' was successfully listed!')
+        except:
+            error = True
+            print(sys.exc_info())
+            db.session.rollback()
+            flash('An error occurred. Venue ' + newVenue.name + ' could not be listed.', 'error')
+
+    if error:
+        form = VenueForm(**venue)
+        return render_template('forms/new_venue.html', form=form)
+
     # e.g., flash('An error occurred. Venue ' + data.name + ' could not be listed.')
     # see: http://flask.pocoo.org/docs/1.0/patterns/flashing/
     return render_template('pages/home.html')
@@ -199,10 +231,20 @@ def create_venue_submission():
 def delete_venue(venue_id):
     # TODO: Complete this endpoint for taking a venue_id, and using
     # SQLAlchemy ORM to delete a record. Handle cases where the session commit could fail.
+    venue = Venue.query.get(venue_id)
+    error = False
+    try:
+        db.session.delete(venue)
+        db.session.commit()
+        flash('Venue was deleted successfully.')
+    except:
+        error = True
+        db.session.rollback()
+        flash(f'Could not delete Venue ID {venue_id}', 'error')
 
     # BONUS CHALLENGE: Implement a button to delete a Venue on a Venue Page, have it so that
     # clicking that button delete it from the db then redirect the user to the homepage
-    return None
+    return jsonify({'success': not error, 'redirect': '/'})
 
 
 #  Artists
@@ -262,60 +304,98 @@ def show_artist(artist_id):
 #  ----------------------------------------------------------------
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
 def edit_artist(artist_id):
-    form = ArtistForm()
-    artist = Artist.query.get(artist_id)
-    print(artist)
-
-    artist = {
-        "id": 4,
-        "name": "Guns N Petals",
-        "genres": ["Rock n Roll"],
-        "city": "San Francisco",
-        "state": "CA",
-        "phone": "326-123-5000",
-        "website": "https://www.gunsnpetalsband.com",
-        "facebook_link": "https://www.facebook.com/GunsNPetals",
-        "seeking_venue": True,
-        "seeking_description": "Looking for shows to perform at in the San Francisco Bay Area!",
-        "image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80"
-    }
-    # TODO: populate form with fields from artist with ID <artist_id>
+    artist = Artist.query.get(artist_id).__dict__
+    artist['genres'] = artist['genres'][1:-1].replace('"','').split(',')
+    form = ArtistForm(MultiDict(artist))
     return render_template('forms/edit_artist.html', form=form, artist=artist)
 
 
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
 def edit_artist_submission(artist_id):
-    # TODO: take values from the form submitted, and update existing
     # artist record with ID <artist_id> using the new attributes
+    # Load the existing Artist
+    oArtist = Artist.query.get(artist_id)
+    # Update the Artist instance from the data in the form
+    oArtist.name = request.form.get('name', '')
+    oArtist.genres = request.form.getlist('genres')
+    oArtist.city = request.form.get('city', '')
+    oArtist.state = request.form.get('state', '')
+    oArtist.phone = request.form.get('phone', '')
+    oArtist.facebook_link = request.form.get('facebook_link', '')
+
+    # Finds if the name is taken by another artist
+    error = False
+    exists = len(Artist.query
+                 .filter(db.func.lower(Artist.name) == db.func.lower(oArtist.name),
+                         Artist.id != artist_id)
+                 .all()) > 0
+
+    # Update the artist only if it doesn't exist
+    if exists:
+        error = True
+        flash('An error occurred. Another artist ' + oArtist.name + ' exists already.', 'error')
+    else:
+        try:
+            db.session.commit()
+            # on successful db insert, flash success
+            flash('Artist ' + oArtist.name + ' was successfully updated!')
+        except:
+            error = True
+            db.session.rollback()
+            flash('An error occurred. Artist ' + oArtist.name + ' could not be listed.', 'error')
+
+    if error:
+        return redirect(url_for('edit_artist', artist_id=artist_id))
 
     return redirect(url_for('show_artist', artist_id=artist_id))
 
 
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
-    form = VenueForm()
-    venue = {
-        "id": 1,
-        "name": "The Musical Hop",
-        "genres": ["Jazz", "Reggae", "Swing", "Classical", "Folk"],
-        "address": "1015 Folsom Street",
-        "city": "San Francisco",
-        "state": "CA",
-        "phone": "123-123-1234",
-        "website": "https://www.themusicalhop.com",
-        "facebook_link": "https://www.facebook.com/TheMusicalHop",
-        "seeking_talent": True,
-        "seeking_description": "We are on the lookout for a local artist to play every two weeks. Please call us.",
-        "image_link": "https://images.unsplash.com/photo-1543900694-133f37abaaa5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=400&q=60"
-    }
-    # TODO: populate form with values from venue with ID <venue_id>
+    venue = Venue.query.get(venue_id).__dict__
+    venue['genres'] = venue['genres'][1:-1].replace('"', '').split(',')
+    form = VenueForm(MultiDict(venue))
     return render_template('forms/edit_venue.html', form=form, venue=venue)
 
 
 @app.route('/venues/<int:venue_id>/edit', methods=['POST'])
 def edit_venue_submission(venue_id):
-    # TODO: take values from the form submitted, and update existing
     # venue record with ID <venue_id> using the new attributes
+    # Load the existing Venue
+    oVenue = Venue.query.get(venue_id)
+    # Update the Venue instance from the data in the form
+    oVenue.name = request.form.get('name', '')
+    oVenue.genres = request.form.getlist('genres')
+    oVenue.city = request.form.get('city', '')
+    oVenue.state = request.form.get('state', '')
+    oVenue.address = request.form.get('address', '')
+    oVenue.phone = request.form.get('phone', '')
+    oVenue.facebook_link = request.form.get('facebook_link', '')
+
+    # Finds if the name is taken by another Venue
+    error = False
+    exists = len(Venue.query
+                 .filter(db.func.lower(Venue.name) == db.func.lower(oVenue.name),
+                         Venue.id != venue_id)
+                 .all()) > 0
+
+    # Update the Venue only if it doesn't exist
+    if exists:
+        error = True
+        flash('An error occurred. Another venue ' + oVenue.name + ' exists already.', 'error')
+    else:
+        try:
+            db.session.commit()
+            # on successful db insert, flash success
+            flash('Venue ' + oVenue.name + ' was successfully updated!')
+        except:
+            error = True
+            db.session.rollback()
+            flash('An error occurred. Venue ' + oVenue.name + ' could not be listed.', 'error')
+
+    if error:
+        return redirect(url_for('edit_venue', venue_id=venue_id))
+
     return redirect(url_for('show_venue', venue_id=venue_id))
 
 
@@ -330,14 +410,43 @@ def create_artist_form():
 
 @app.route('/artists/create', methods=['POST'])
 def create_artist_submission():
-    # called upon submitting the new artist listing form
-    # TODO: insert form data as a new Venue record in the db, instead
-    # TODO: modify data to be the data object returned from db insertion
+    # Called upon submitting the new artist listing form.
+    # Grab data from form.
+    artist = {
+        "name": request.form.get('name', ''),
+        "genres": request.form.getlist('genres'),
+        "city": request.form.get('city', ''),
+        "state": request.form.get('state', ''),
+        "phone": request.form.get('phone', ''),
+        "website": None,
+        "facebook_link": request.form.get('facebook_link', ''),
+    }
+    # Make an instance from the data
+    newArtist = Artist(**artist)
+    error = False
+    exists = len(Artist.query
+                 .filter(db.func.lower(Artist.name) == db.func.lower(newArtist.name))
+                 .all()) > 0
 
-    # on successful db insert, flash success
-    flash('Artist ' + request.form['name'] + ' was successfully listed!')
-    # TODO: on unsuccessful db insert, flash an error instead.
-    # e.g., flash('An error occurred. Artist ' + data.name + ' could not be listed.')
+    # Inserts the venue only if it doesn't exist
+    if exists:
+        error = True
+        flash('An error occurred. Artist ' + newArtist.name + ' exists already.', 'error')
+    else:
+        try:
+            db.session.add(newArtist)
+            db.session.commit()
+            # on successful db insert, flash success
+            flash('Artist ' + newArtist.name + ' was successfully listed!')
+        except:
+            error = True
+            db.session.rollback()
+            flash('An error occurred. Artist ' + newArtist.name + ' could not be listed.', 'error')
+
+    if error:
+        form = ArtistForm(**artist)
+        return render_template('forms/new_artist.html', form=form)
+
     return render_template('pages/home.html')
 
 
@@ -361,11 +470,41 @@ def create_shows():
 @app.route('/shows/create', methods=['POST'])
 def create_show_submission():
     # called to create new shows in the db, upon submitting new show listing form
-    # TODO: insert form data as a new Show record in the db, instead
+    show = {
+        'artist_id': request.form.get('artist_id', ''),
+        'venue_id': request.form.get('venue_id', ''),
+        'start_time': request.form.get('start_time', '')
+    }
+    new_show = Show(**show)
+    artist_exists = Artist.query.get(new_show.artist_id) is not None
+    venue_exists = Venue.query.get(new_show.venue_id) is not None
+    old_date = dateutil.parser.parse(new_show.start_time).date() <= datetime.today().date()
+    error = False
+    if not artist_exists:
+        error = True
+        flash(f'The Artist ID {new_show.artist_id} cannot be found.', 'error')
+    if not venue_exists:
+        error = True
+        flash(f'The Venue ID {new_show.venue_id} cannot be found.', 'error')
+    if old_date:
+        error = True
+        flash(f'The date {new_show.start_time} is a previous date.', 'error')
 
-    # on successful db insert, flash success
-    flash('Show was successfully listed!')
-    # TODO: on unsuccessful db insert, flash an error instead.
+    if not error:
+        try:
+            db.session.add(new_show)
+            db.session.commit()
+            # on successful db insert, flash success
+            flash('Show was successfully listed!')
+        except:
+            error = True
+            db.session.rollback()
+            flash('An error occurred. Show could not be listed.', 'error')
+
+    if error:
+        form = ShowForm(**show)
+        return render_template('forms/new_show.html', form=form)
+
     # e.g., flash('An error occurred. Show could not be listed.')
     # see: http://flask.pocoo.org/docs/1.0/patterns/flashing/
     return render_template('pages/home.html')
