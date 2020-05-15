@@ -15,7 +15,8 @@ def fetch_num_upcoming_show_byvenue(venue_id):
     count = (db.session
              .query(db.func.count(Show.venue_id))
              .group_by(Show.venue_id)
-             .filter(Show.start_time > db.func.current_timestamp(), Show.venue_id == venue_id)
+             .filter(Show.start_time > db.func.current_timestamp(),
+                     Show.venue_id == venue_id)
              .scalar())
     return count if count is not None else 0
 
@@ -24,7 +25,8 @@ def fetch_num_upcoming_show_by_artist(artist_id):
     count = (db.session
              .query(db.func.count(Show.artist_id))
              .group_by(Show.artist_id)
-             .filter(Show.start_time > db.func.current_timestamp(), Show.artist_id == artist_id)
+             .filter(Show.start_time > db.func.current_timestamp(),
+                     Show.artist_id == artist_id)
              .scalar())
     return count if count is not None else 0
 
@@ -34,7 +36,8 @@ def fill_num_upcoming_shows(venue_dict):
     :param venue_dict: a dict containing Venue.id, Venue.name
     :return:
     """
-    venue_dict['num_upcoming_shows'] = fetch_num_upcoming_show_byvenue(venue_dict['id'])
+    num_upcoming_shows = fetch_num_upcoming_show_byvenue(venue_dict['id'])
+    venue_dict['num_upcoming_shows'] = num_upcoming_shows
 
 
 def fetch_venues():
@@ -44,7 +47,9 @@ def fetch_venues():
     venues = Venue.query.order_by(Venue.state, Venue.city).all()
     data = []
     for venue in venues:
-        if len(data) == 0 or venue.city != data[-1]['city'] or venue.state != data[-1]['state']:
+        if len(data) == 0
+        or venue.city != data[-1]['city']
+        or venue.state != data[-1]['state']:
             data.append({
                 'city': venue.city,
                 'state': venue.state,
@@ -85,10 +90,15 @@ def fetch_past_shows_by_venue(venue_id):
     :return: list of past shows
     """
     shows = (db.session
-             .query(Artist.id, Artist.name, Artist.image_link, Show.start_time)
+             .query(Artist.id,
+                    Artist.name,
+                    Artist.image_link,
+                    Show.start_time)
              .join(Venue, Venue.id == Show.venue_id)
              .join(Artist, Artist.id == Show.artist_id)
-             .filter(Show.start_time <= db.func.current_timestamp(), Venue.id == venue_id).all())
+             .filter(Show.start_time <= db.func.current_timestamp(),
+                     Venue.id == venue_id)
+             .all())
     data = []
     for show in shows:
         data.append({
@@ -109,7 +119,9 @@ def fetch_past_shows_by_artist(artist_id):
              .query(Venue.id, Venue.name, Venue.image_link, Show.start_time)
              .join(Venue, Venue.id == Show.venue_id)
              .join(Artist, Artist.id == Show.artist_id)
-             .filter(Show.start_time <= db.func.current_timestamp(), Artist.id == artist_id).all())
+             .filter(Show.start_time <= db.func.current_timestamp(),
+                     Artist.id == artist_id)
+             .all())
     data = []
     for show in shows:
         data.append({
@@ -130,7 +142,9 @@ def fetch_upcoming_shows_by_artist(artist_id):
              .query(Venue.id, Venue.name, Venue.image_link, Show.start_time)
              .join(Venue, Venue.id == Show.venue_id)
              .join(Artist, Artist.id == Show.artist_id)
-             .filter(Show.start_time > db.func.current_timestamp(), Artist.id == artist_id).all())
+             .filter(Show.start_time > db.func.current_timestamp(),
+                     Artist.id == artist_id)
+             .all())
     data = []
     for show in shows:
         data.append({
@@ -151,7 +165,9 @@ def fetch_upcoming_shows_by_venue(venue_id):
              .query(Artist.id, Artist.name, Artist.image_link, Show.start_time)
              .join(Venue, Venue.id == Show.venue_id)
              .join(Artist, Artist.id == Show.artist_id)
-             .filter(Show.start_time > db.func.current_timestamp(), Venue.id == venue_id).all())
+             .filter(Show.start_time > db.func.current_timestamp(),
+                     Venue.id == venue_id)
+             .all())
     data = []
     for show in shows:
         data.append({
@@ -189,7 +205,12 @@ def fetch_artists_by_name(name):
 
 def fetch_shows():
     shows = (db.session
-             .query(Venue.id, Venue.name, Artist.id, Artist.name, Artist.image_link, Show.start_time)
+             .query(Venue.id,
+                    Venue.name,
+                    Artist.id,
+                    Artist.name,
+                    Artist.image_link,
+                    Show.start_time)
              .join(Venue, Venue.id == Show.venue_id)
              .join(Artist, Artist.id == Show.artist_id)
              .all())
